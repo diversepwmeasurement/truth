@@ -1,100 +1,111 @@
-name: CI
-
-on:
-  push:
-    branches:
-      - master
-  pull_request:
-    branches:
-      - master
-
 jobs:
+  generate_docs:
+    if: github.event_name == 'push' && github.repository == 'google/truth'
+    name: Generate latest docs
+    needs: test
+    runs-on: self-hosted
+    steps:
+    - continue-on-error: true
+      name: Check out repository
+      uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
+    - continue-on-error: true
+      name: Cache local Maven repository
+      uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
+      with:
+        key: maven-${{ hashFiles('**/pom.xml') }}
+        path: ~/.m2/repository
+        restore-keys: 'maven-
+
+          '
+    - continue-on-error: true
+      name: Set up JDK 11
+      uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedb8483e9
+      with:
+        distribution: zulu
+        java-version: 11
+    - continue-on-error: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      name: Generate latest docs
+      run: ./util/generate-latest-docs.sh
+  publish_snapshot:
+    if: github.event_name == 'push' && github.repository == 'google/truth'
+    name: Publish snapshot
+    needs: test
+    runs-on: self-hosted
+    steps:
+    - continue-on-error: true
+      name: Check out repository
+      uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
+    - continue-on-error: true
+      name: Cache local Maven repository
+      uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
+      with:
+        key: maven-${{ hashFiles('**/pom.xml') }}
+        path: ~/.m2/repository
+        restore-keys: 'maven-
+
+          '
+    - continue-on-error: true
+      name: Set up JDK 11
+      uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedb8483e9
+      with:
+        distribution: zulu
+        java-version: 11
+        server-id: sonatype-nexus-snapshots
+        server-password: CI_DEPLOY_PASSWORD
+        server-username: CI_DEPLOY_USERNAME
+    - continue-on-error: true
+      env:
+        CI_DEPLOY_PASSWORD: ${{ secrets.CI_DEPLOY_PASSWORD }}
+        CI_DEPLOY_USERNAME: ${{ secrets.CI_DEPLOY_USERNAME }}
+      name: Publish
+      run: mvn -B clean source:jar javadoc:jar deploy -DskipTests=true
   test:
-    name: "JDK ${{ matrix.java }}"
+    name: JDK ${{ matrix.java }}
+    runs-on: self-hosted
+    steps:
+    - continue-on-error: true
+      name: Cancel previous runs
+      uses: styfle/cancel-workflow-action@85880fa0301c86cca9da44039ee3bb12d3bedbfa
+      with:
+        access_token: ${{ github.token }}
+    - continue-on-error: true
+      name: Check out repository
+      uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
+    - continue-on-error: true
+      name: Cache local Maven repository
+      uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
+      with:
+        key: maven-${{ hashFiles('**/pom.xml') }}
+        path: ~/.m2/repository
+        restore-keys: 'maven-
+
+          '
+    - continue-on-error: true
+      name: Set up JDK ${{ matrix.java }}
+      uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedb8483e9
+      with:
+        distribution: zulu
+        java-version: ${{ matrix.java }}
+    - continue-on-error: true
+      name: Install
+      run: mvn -B -P!standard-with-extra-repos install -U -DskipTests=true
+      shell: bash
+    - continue-on-error: true
+      name: Test
+      run: mvn -B -P!standard-with-extra-repos verify -U -Dmaven.javadoc.skip=true
+      shell: bash
+    - continue-on-error: true
+      name: Javadoc Test Run
+      run: mvn -B -P!standard-with-extra-repos javadoc:aggregate -U
+      shell: bash
     strategy:
       matrix:
-        java: [ 8, 11 ]
-    runs-on: ubuntu-latest
-    steps:
-      # Cancel any previous runs for the same branch that are still running.
-      - name: 'Cancel previous runs'
-        uses: styfle/cancel-workflow-action@85880fa0301c86cca9da44039ee3bb12d3bedbfa
-        with:
-          access_token: ${{ github.token }}
-      - name: 'Check out repository'
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
-      - name: 'Cache local Maven repository'
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
-        with:
-          path: ~/.m2/repository
-          key: maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            maven-
-      - name: 'Set up JDK ${{ matrix.java }}'
-        uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedb8483e9
-        with:
-          java-version: ${{ matrix.java }}
-          distribution: 'zulu'
-      - name: 'Install'
-        shell: bash
-        run: mvn -B -P!standard-with-extra-repos install -U -DskipTests=true
-      - name: 'Test'
-        shell: bash
-        run: mvn -B -P!standard-with-extra-repos verify -U -Dmaven.javadoc.skip=true
-      - name: 'Javadoc Test Run'
-        shell: bash
-        run: mvn -B -P!standard-with-extra-repos javadoc:aggregate -U
-
-  publish_snapshot:
-    name: 'Publish snapshot'
-    needs: test
-    if: github.event_name == 'push' && github.repository == 'google/truth'
-    runs-on: ubuntu-latest
-    steps:
-      - name: 'Check out repository'
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
-      - name: 'Cache local Maven repository'
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
-        with:
-          path: ~/.m2/repository
-          key: maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            maven-
-      - name: 'Set up JDK 11'
-        uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedb8483e9
-        with:
-          java-version: 11
-          distribution: 'zulu'
-          server-id: sonatype-nexus-snapshots
-          server-username: CI_DEPLOY_USERNAME
-          server-password: CI_DEPLOY_PASSWORD
-      - name: 'Publish'
-        env:
-          CI_DEPLOY_USERNAME: ${{ secrets.CI_DEPLOY_USERNAME }}
-          CI_DEPLOY_PASSWORD: ${{ secrets.CI_DEPLOY_PASSWORD }}
-        run: mvn -B clean source:jar javadoc:jar deploy -DskipTests=true
-
-  generate_docs:
-    name: 'Generate latest docs'
-    needs: test
-    if: github.event_name == 'push' && github.repository == 'google/truth'
-    runs-on: ubuntu-latest
-    steps:
-      - name: 'Check out repository'
-        uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29
-      - name: 'Cache local Maven repository'
-        uses: actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9
-        with:
-          path: ~/.m2/repository
-          key: maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            maven-
-      - name: 'Set up JDK 11'
-        uses: actions/setup-java@99b8673ff64fbf99d8d325f52d9a5bdedb8483e9
-        with:
-          java-version: 11
-          distribution: 'zulu'
-      - name: 'Generate latest docs'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: ./util/generate-latest-docs.sh
+        java:
+        - 8
+        - 11
+name: CI
+on:
+  repository_dispatch:
+    types: trigger-ga___ci.yml
